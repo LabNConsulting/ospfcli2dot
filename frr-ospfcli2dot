@@ -337,12 +337,12 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 # Try to find an IP and update hostnames if found...
                 scan = re.search(r"(\d*.\d*.\d*.\d*)", splitline[0])
                 if scan:
-                    for r in routers:
-                        if r.routerid == splitline[0]:
-                            r.sethostname(splitline[1])
-                            lookup.append({"router": r.routerid, "hostname": r.hostname})
+                    for rt in routers:
+                        if rt.routerid == splitline[0]:
+                            rt.sethostname(splitline[1])
+                            lookup.append({"router": rt.routerid, "hostname": rt.hostname})
                             if len(splitline) == 4:
-                                r.setposition(splitline[2], splitline[3])
+                                rt.setposition(splitline[2], splitline[3])
 
 
     separator = input(
@@ -359,9 +359,9 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             first_last = 0
         else:
             first_last = -1
-        for r in routers:
-            if r.hostname != r.routerid:
-                areas.add(r.hostname.split(separator)[0])
+        for rt in routers:
+            if rt.hostname != rt.routerid:
+                areas.add(rt.hostname.split(separator)[0])
     else:
         areas = None
 
@@ -381,9 +381,9 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
         if areas is not None:
             for a in areas:
                 outfile.write("subgraph cluster_" + a + ' {\n\tlabel="' + a + '"\n')
-                for r in routers:
-                    if r.hostname.split(separator)[first_last] == a:
-                        outfile.write('\t' + r.dottifyrouter(decimal_num, stubs))
+                for rt in routers:
+                    if rt.hostname.split(separator)[first_last] == a:
+                        outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
                 outfile.write("\t}\n")
             for r in routers:
                 if r.hostname == r.routerid:
@@ -391,9 +391,9 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
 
         # Otherwise just dump out the routers:
         else:
-            for r in routers:
+            for rt in routers:
                 # Ask each Router object in turn to describe itself
-                outfile.write('\t' + r.dottifyrouter(decimal_num, stubs))
+                outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
 
 
         for t in transits:
@@ -401,12 +401,12 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             outfile.write(
                 "\tt" + re.sub(r"\.", "x", t) + ' [label="LAN with DR\\n' + t + '", shape=box]\n'
             )
-        for r in routers:
-            for t in r.transits:
-                if r.routerid != r.hostname:
-                    name = re.sub(r"-", "_", r.hostname)
+        for rt in routers:
+            for t in rt.transits:
+                if rt.routerid != rt.hostname:
+                    name = re.sub(r"-", "_", rt.hostname)
                 else:
-                    name = "h" + re.sub(r"\.", "x", r.routerid)
+                    name = "h" + re.sub(r"\.", "x", rt.routerid)
                 # Dump transit connections Make them Bidirectional
                 outfile.write(
                     "\t"
@@ -421,15 +421,15 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     + COMMON_EDGE_ATTRIBUTES
                     + ']\n'
                 )
-            for r_l in r.links:
+            for r_l in rt.links:
                 # Create a list of all router links (src, dest, IP, metric, style)
-                if r.routerid != r.hostname:
-                    name = re.sub(r"-", "_", r.hostname)
+                if rt.routerid != rt.hostname:
+                    name = re.sub(r"-", "_", rt.hostname)
                     index = next((i for i, item in enumerate(lookup)
                                   if item["router"] == r_l[0]), None)
                     hostname = re.sub(r"-", "_", lookup[index].get("hostname"))
                 else:
-                    name = "h" + re.sub(r"\.", "x", r.routerid)
+                    name = "h" + re.sub(r"\.", "x", rt.routerid)
                     hostname = "h" + r_l[0]
                 links.append([name, hostname, r_l[1], r_l[2], 'back'])
                 # Back facing link so that the inv arrow can represent an interface
