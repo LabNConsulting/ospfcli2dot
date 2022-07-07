@@ -223,26 +223,6 @@ class Router(object):
         """
         self.position = '", pos = "' + x_coord + "," + y_coord + "!"
 
-    def __str__(self):
-        """
-        Override the str() method
-        """
-        r_v = ""
-        r_v += "Router ID: " + self.routerid + "\n"
-        r_v += "Hostname: " + self.hostname + "\n"
-        r_v += "Stubs:\n"
-        for stub in self.stubs:
-            r_v += stub[0] + toslash(stub[1]) + " with metric: " + str(stub[2]) + "\n" 
-        r_v += "Links:\n"
-        for link in self.links:
-            r_v += link[0] + ": with IP: " + link[1] + ", metric: " + str(link[2]) + "\n"
-        r_v += "Transits:\n"
-        for transit in self.transits:
-            r_v += transit[0] + " with metric: " + str(transit[1]) + "\n"
-        r_v += "Position: " + self.position
-        return r_v
-
-
 print(
     'frr-ospfcli2dot - takes the output of "show ip ospf database router"' +
     'and optionally a hostfile\noutputs a GraphViz DOT file ' +
@@ -423,14 +403,16 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 )
             for r_l in rt.links:
                 # Create a list of all router links (src, dest, IP, metric, style)
-                if rt.routerid != rt.hostname:
-                    name = re.sub(r"-", "_", rt.hostname)
-                    index = next((i for i, item in enumerate(lookup)
+                index = next((i for i, item in enumerate(lookup)
                                   if item["router"] == r_l[0]), None)
+                if index != None:
                     hostname = re.sub(r"-", "_", lookup[index].get("hostname"))
                 else:
+                    hostname = "h" + r_l[0]    
+                if rt.routerid != rt.hostname:
+                    name = re.sub(r"-", "_", rt.hostname)
+                else:
                     name = "h" + re.sub(r"\.", "x", rt.routerid)
-                    hostname = "h" + r_l[0]
                 links.append([name, hostname, r_l[1], r_l[2], 'back'])
                 # Back facing link so that the inv arrow can represent an interface
 
