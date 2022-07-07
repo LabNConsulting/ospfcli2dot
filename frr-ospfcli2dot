@@ -26,10 +26,8 @@ COMMON_EDGE_ATTRIBUTES = (
     + ', arrowtail=inv'
     + ', labeldistance=3'
     + ', labelangle=0'
-    # dot attributes
-    + ', minlen=3'
-    # circo attributes'
-    
+    # dot only attributes
+    + ', minlen=3'    
     )
 
 def toslash(my_str):
@@ -148,11 +146,11 @@ def merge_sort(my_list):
 
 def label(s):
     """
-    Will be used to return a graphViz label with a white background using html
+    Will be used to return a graphViz label with a white background using html tags
     """
     r_s = (
         '<'
-      +   '<table border="0" cellborder="0">'
+      +   '<table border="0" cellborder="1">'
       +     '<tr>'
       +       '<td bgcolor="white">' + str(s) + '</td>'
       +     '</tr>'
@@ -376,8 +374,8 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             "digraph Topology {\n"
             + "overlap=scale\n"
             + "splines=true\n"
-            # circo attributes
-            + "mindist=2\n"
+            # circo only attributes
+            + "mindist=2.25\n"
         )
         # If we have areas defined, create them and put the routers inside:
         if areas is not None:
