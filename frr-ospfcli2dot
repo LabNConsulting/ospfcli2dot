@@ -22,13 +22,13 @@ import argparse
 import os
 
 COMMON_EDGE_ATTRIBUTES = (
-      ', arrowhead=inv'
-    + ', arrowtail=inv'
-    + ', labeldistance=3'
+    ', labeldistance=3'
     + ', labelangle=0'
     # dot only attributes
     + ', minlen=3'    
     )
+_ospf_color_dict = dict()
+_ospf_remaining_colors = ["blue","red","green","orange","orchid1","darkblue","brown1","gold2"]
 
 def toslash(my_str):
     """
@@ -158,6 +158,19 @@ def label(s):
       + '>')
     return r_s
 
+def get_color(ospf_area):
+    """
+    Will be used to obtain a color assigned to an area or assign a color to a new area
+    """
+    r_v = "black"
+    try:
+        r_v = _ospf_color_dict[ospf_area]
+    except KeyError:
+        if (len(_ospf_remaining_colors) > 0):
+            r_v = _ospf_remaining_colors.pop(0)
+            _ospf_color_dict[ospf_area] = r_v
+    return r_v
+
 class Router(object):
     """
     # Class to store a single router's identity, stub networks and links
@@ -169,6 +182,7 @@ class Router(object):
         self.links = []
         self.transits = []
         self.position = ""
+        self.ospf_areas = []
 
     def sethostname(self, string):
         """
@@ -176,23 +190,29 @@ class Router(object):
         """
         self.hostname = string
 
-    def addstub(self, subnet, mask, metric):
+    def addarea(self, ospf_area):
+        """
+        Add an OSPF area to the router
+        """
+        self.ospf_areas.append(ospf_area)
+        
+    def addstub(self, subnet, mask, metric, ospf_area):
         """
         Add a Stub
         """
-        self.stubs.append([subnet, mask, metric])
+        self.stubs.append([subnet, mask, metric, ospf_area])
 
-    def addlink(self, neighbr, ip_addr, metric):
+    def addlink(self, neighbr, ip_addr, metric, ospf_area):
         """
         Add a Link
         """
-        self.links.append([neighbr, ip_addr, metric])
+        self.links.append([neighbr, ip_addr, metric, ospf_area])
 
-    def addtransit(self, d_r, metric):
+    def addtransit(self, d_r, metric, ospf_area):
         """
         Add a transit Node
         """
-        self.transits.append([d_r, metric])
+        self.transits.append([d_r, metric, ospf_area])
 
     def dottifyrouter(self, decimal_num, stubs):
         """
@@ -240,17 +260,31 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
     links = []
     transits = []
     areas = []
+    ospf_areas = []
     reduce_links = 'n'
     lookup = []
+    ospf_area = None
     neighbour = None
     stubnet = None
     transit = None
     with open(source_file, "r") as infile:
         for line in infile:
+            scan = re.search(r"Router Link States \(Area ((?:\d*.\d*.\d*.\d*)|(?:\d*))\)", line)
+            if scan:
+                ospf_area = scan.group(1)
+                ospf_areas.append(ospf_area)
+                continue
             scan = re.search(r"Link State ID: (\d*.\d*.\d*.\d*)", line)
             if scan:
-                rtr = Router(scan.group(1))
-                routers.append(rtr)
+                # First try to find the router if it already exists, if not then make a new router
+                rtr = None
+                for rt in routers:
+                    if rt.routerid == scan.group(1):
+                        rtr = rt
+                if rtr == None:
+                    rtr = Router(scan.group(1))
+                    routers.append(rtr)
+                rtr.addarea(ospf_area)
                 continue
             scan = re.search(r"Advertising Router: (\S*)", line)
             if scan:
@@ -282,17 +316,17 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             scan = re.search(r"TOS 0 Metric(?s): (\d*)", line)
             if scan:
                 if neighbour is not None:
-                    rtr.addlink(neighbour, interfaceip, scan.group(1))
+                    rtr.addlink(neighbour, interfaceip, scan.group(1), ospf_area)
                     neighbour = None
                     interfaceip = None
                 elif stubnet is not None:
-                    rtr.addstub(stubnet, stubmask, scan.group(1))
+                    rtr.addstub(stubnet, stubmask, scan.group(1), ospf_area)
                     stubnet = None
                     stubmask = None
                 elif transit is not None:
                     if transit not in transits:
-                        transits.append(transit)
-                    rtr.addtransit(transit, scan.group(1))
+                        transits.append([transit, ospf_area])
+                    rtr.addtransit(transit, scan.group(1), ospf_area)
                     transit = None
                 continue
 
@@ -365,22 +399,37 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     if rt.hostname.split(separator)[first_last] == a:
                         outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
                 outfile.write("\t}\n")
-            for r in routers:
-                if r.hostname == r.routerid:
-                    outfile.write('\t' + r.dottifyrouter(decimal_num, stubs))
-
-        # Otherwise just dump out the routers:
-        else:
             for rt in routers:
-                # Ask each Router object in turn to describe itself
-                outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
-
-
-        for t in transits:
-            # Create items for transit networks
-            outfile.write(
-                "\tt" + re.sub(r"\.", "x", t) + ' [label="LAN with DR\\n' + t + '", shape=box]\n'
-            )
+                if rt.hostname == rt.routerid:
+                    outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
+            for t in transits:
+                # Create items for transit networks
+                outfile.write(
+                    "\tt" + re.sub(r"\.", "x", t[0]) + ' [label="LAN with DR\\n' + t[0] + '", shape=box, color=' + get_color(t[1]) + ']\n')
+                        
+        # Otherwise cluster the routers and transits by OSPF Area:
+        else:
+            for a in ospf_areas:
+                outfile.write("subgraph \"cluster_" + a + '\" {\n\tlabel="' + a + '"\n')
+                for rt in routers:
+                    # ABR's should not be grouped in subgraph clusters
+                    if len(rt.ospf_areas) == 1 and rt.ospf_areas[0] == a:
+                        outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
+                for t in transits:
+                    # Create items for transit networks if in correct area
+                    if t[1] == a:
+                        outfile.write(
+                            "\tt" + re.sub(r"\.", "x", t[0])
+                            + ' [label="LAN with DR\\n' + t[0]
+                            + '", shape=box, color='
+                            + get_color(t[1]) + ']\n')
+                outfile.write("\t}\n")
+            # Dump all ABR's after the subgraph clusters
+            for rt in routers:
+                if len(rt.ospf_areas) > 1:
+                    outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
+        
+        # Dump all edges after the subgraph clusters        
         for rt in routers:
             for t in rt.transits:
                 if rt.routerid != rt.hostname:
@@ -398,6 +447,10 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     + ', weight='
                     + t[1]
                     + ', dir=both'
+                    + ', color='
+                    + get_color(t[2])
+                    + ', arrowhead=inv'
+                    + ', arrowtail=inv'
                     + COMMON_EDGE_ATTRIBUTES
                     + ']\n'
                 )
@@ -413,7 +466,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     name = re.sub(r"-", "_", rt.hostname)
                 else:
                     name = "h" + re.sub(r"\.", "x", rt.routerid)
-                links.append([name, hostname, r_l[1], r_l[2], 'back'])
+                links.append([name, hostname, r_l[1], r_l[2], 'back', r_l[3]])
                 # Back facing link so that the inv arrow can represent an interface
 
         if reduce_links == 'y':
@@ -436,8 +489,11 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 + s_l[3]
                 + ', dir='
                 + s_l[4]
-                + ', color="blue"' # All Links are blue
-                + COMMON_EDGE_ATTRIBUTES   
+                + ', color='
+                + get_color(s_l[5])
+                + ', arrowhead=invempty'
+                + ', arrowtail=invempty'
+                + COMMON_EDGE_ATTRIBUTES
                 + "]\n"
             )
         outfile.write("}\n")
