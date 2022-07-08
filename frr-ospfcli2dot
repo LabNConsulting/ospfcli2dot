@@ -25,7 +25,9 @@ COMMON_EDGE_ATTRIBUTES = (
     ', labeldistance=3'
     + ', labelangle=0'
     # dot only attributes
-    + ', minlen=3'    
+    + ', minlen=3'
+    # neato only attributes
+    + ', len=3'
     )
 _ospf_color_dict = dict()
 _ospf_remaining_colors = ["blue","red","green","orange","orchid1","darkblue","brown1","gold2"]
@@ -390,6 +392,8 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             + "splines=true\n"
             # circo only attributes
             + "mindist=2.25\n"
+            # neato only attributes
+            + "model=mds\n"
         )
         # If we have areas defined, create them and put the routers inside:
         if areas is not None:
@@ -410,7 +414,12 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
         # Otherwise cluster the routers and transits by OSPF Area:
         else:
             for a in ospf_areas:
-                outfile.write("subgraph \"cluster_" + a + '\" {\n\tlabel="' + a + '"\n')
+                outfile.write(
+                    'subgraph "cluster_' + a + '"'
+                    + ' {\n\tlabel="Area ' + a + '"\n'
+                    + 'style=dashed\n'
+                    + 'margin=20.0\n'
+                    + 'color=' + get_color(a) + '\n')
                 for rt in routers:
                     # ABR's should not be grouped in subgraph clusters
                     if len(rt.ospf_areas) == 1 and rt.ospf_areas[0] == a:
