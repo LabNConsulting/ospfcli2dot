@@ -10,27 +10,29 @@ you so desire.
 """
 # ospfcli2dot - original by Foeh Mannay 2018
 # Modified for FRR output and various fixes Don Fedyk
+# Additional modifications and fixes by Liam Brady
 # black formatted 4 space vs tab
-# pylint3 checked. 9/10
-# Reduce_links never would work fixed it needs to be a 2 deep nested loop.
+# pylint3 checked. 8.91/10
 # TODO: Not hardened for input.
 #
 # Added a force option to ease the calling of this from scripts.
+# Known issue: Interface metrics potentially aren't visible on parallel edges
+# Known issue: Area labels can get totally or partially obscured by nodes
 
 import re
 import argparse
 import os
 
 COMMON_EDGE_ATTRIBUTES = (
-    ', labeldistance=3'
+    ', labeldistance=3.5'
     + ', labelangle=0'
     # dot only attributes
     + ', minlen=3'
-    # neato only attributes
-    + ', len=3'
     )
-_ospf_color_dict = dict()
-_ospf_remaining_colors = ["blue","red","green","orange","orchid1","darkblue","brown1","gold2"]
+
+# global variables to be used in get_color()
+_ospf_color_dict = {}
+_ospf_remaining_colors = ["blue","red","green","orange","orchid1","darkblue","teal","gold2"]
 
 def toslash(my_str):
     """
@@ -146,15 +148,16 @@ def merge_sort(my_list):
         sort_list = my_list
     return sort_list
 
-def label(s):
+def label(arg):
     """
-    Will be used to return a graphViz label with a white background using html tags
+    Will be used to return a graphViz label with a white background and a border
+    using html tags
     """
     r_s = (
         '<'
       +   '<table border="0" cellborder="1">'
       +     '<tr>'
-      +       '<td bgcolor="white">' + str(s) + '</td>'
+      +       '<td bgcolor="white">' + str(arg) + '</td>'
       +     '</tr>'
       +   '</table>'
       + '>')
@@ -168,7 +171,7 @@ def get_color(ospf_area):
     try:
         r_v = _ospf_color_dict[ospf_area]
     except KeyError:
-        if (len(_ospf_remaining_colors) > 0):
+        if len(_ospf_remaining_colors) > 0:
             r_v = _ospf_remaining_colors.pop(0)
             _ospf_color_dict[ospf_area] = r_v
     return r_v
@@ -197,7 +200,7 @@ class Router(object):
         Add an OSPF area to the router
         """
         self.ospf_areas.append(ospf_area)
-        
+
     def addstub(self, subnet, mask, metric, ospf_area):
         """
         Add a Stub
@@ -236,7 +239,10 @@ class Router(object):
         if stubs:
             for i in self.stubs:
                 r_v += "\\n" + i[0] + toslash(i[1])
-        r_v += self.position + '"]\n'
+        r_v += self.position + '"'
+        r_v += ', style=filled'
+        r_v += ', fillcolor=white'
+        r_v += ']\n'
         return r_v
 
     def setposition(self, x_coord, y_coord):
@@ -271,7 +277,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
     transit = None
     with open(source_file, "r") as infile:
         for line in infile:
-            scan = re.search(r"Router Link States \(Area ((?:\d*.\d*.\d*.\d*)|(?:\d*))\)", line)
+            scan = re.search(r"Router Link States \(Area (\d*.\d*.\d*.\d*)\)", line)
             if scan:
                 ospf_area = scan.group(1)
                 ospf_areas.append(ospf_area)
@@ -283,7 +289,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 for rt in routers:
                     if rt.routerid == scan.group(1):
                         rtr = rt
-                if rtr == None:
+                if rtr is None:
                     rtr = Router(scan.group(1))
                     routers.append(rtr)
                 rtr.addarea(ospf_area)
@@ -315,7 +321,8 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             # This is modifed for FRR
             # m = re.search('TOS 0 Metrics: (\d*)', line)
             # Changed to "(?s)" which should match if there is an s
-            scan = re.search(r"TOS 0 Metric(?s): (\d*)", line)
+            # XXX Setting the DOTALL flag may have no effect
+            scan = re.search(r"TOS 0 Metric: (\d*)", line, re.S)
             if scan:
                 if neighbour is not None:
                     rtr.addlink(neighbour, interfaceip, scan.group(1), ospf_area)
@@ -388,12 +395,12 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
     with open(destination, "w") as outfile:
         outfile.write(
             "digraph Topology {\n"
-            + "overlap=scale\n"
+            + "overlap=false\n"
             + "splines=true\n"
-            # circo only attributes
-            + "mindist=2.25\n"
-            # neato only attributes
-            + "model=mds\n"
+            + 'sep="+45"\n'
+            + 'esep="+15"\n'
+            + 'forcelabels=true\n'
+            + 'pad=.5\n'
         )
         # If we have areas defined, create them and put the routers inside:
         if areas is not None:
@@ -409,17 +416,19 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             for t in transits:
                 # Create items for transit networks
                 outfile.write(
-                    "\tt" + re.sub(r"\.", "x", t[0]) + ' [label="LAN with DR\\n' + t[0] + '", shape=box, color=' + get_color(t[1]) + ']\n')
-                        
+                    "\tt" + re.sub(r"\.", "x", t[0])
+                    + ' [label="LAN with DR\\n' + t[0] + '"'
+                    + ', shape=box'
+                    + ', color=' + get_color(t[1]) + ']\n')
         # Otherwise cluster the routers and transits by OSPF Area:
         else:
             for a in ospf_areas:
                 outfile.write(
                     'subgraph "cluster_' + a + '"'
                     + ' {\n\tlabel="Area ' + a + '"\n'
-                    + 'style=dashed\n'
-                    + 'margin=20.0\n'
-                    + 'color=' + get_color(a) + '\n')
+                    + '\tfontcolor=' + get_color(a) + '\n'
+                    + '\tstyle=dotted\n'
+                    + '\tcolor=' + get_color(a) + '\n')
                 for rt in routers:
                     # ABR's should not be grouped in subgraph clusters
                     if len(rt.ospf_areas) == 1 and rt.ospf_areas[0] == a:
@@ -429,16 +438,18 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     if t[1] == a:
                         outfile.write(
                             "\tt" + re.sub(r"\.", "x", t[0])
-                            + ' [label="LAN with DR\\n' + t[0]
-                            + '", shape=box, color='
-                            + get_color(t[1]) + ']\n')
+                            + ' [label="LAN with DR\\n' + t[0] + '"'
+                            + ', shape=box'
+                            + ', style=filled'
+                            + ', fillcolor=white'
+                            + ', color=' + get_color(t[1]) + ']\n')
                 outfile.write("\t}\n")
             # Dump all ABR's after the subgraph clusters
             for rt in routers:
                 if len(rt.ospf_areas) > 1:
                     outfile.write('\t' + rt.dottifyrouter(decimal_num, stubs))
-        
-        # Dump all edges after the subgraph clusters        
+
+        # Dump all edges after the subgraph clusters
         for rt in routers:
             for t in rt.transits:
                 if rt.routerid != rt.hostname:
@@ -458,8 +469,8 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                     + ', dir=both'
                     + ', color='
                     + get_color(t[2])
-                    + ', arrowhead=inv'
-                    + ', arrowtail=inv'
+                    + ', arrowhead=odotinvempty'
+                    + ', arrowtail=odotinvempty'
                     + COMMON_EDGE_ATTRIBUTES
                     + ']\n'
                 )
@@ -467,10 +478,10 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 # Create a list of all router links (src, dest, IP, metric, style)
                 index = next((i for i, item in enumerate(lookup)
                                   if item["router"] == r_l[0]), None)
-                if index != None:
+                if index is not None:
                     hostname = re.sub(r"-", "_", lookup[index].get("hostname"))
                 else:
-                    hostname = "h" + r_l[0]    
+                    hostname = "h" + r_l[0]
                 if rt.routerid != rt.hostname:
                     name = re.sub(r"-", "_", rt.hostname)
                 else:
@@ -500,8 +511,8 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 + s_l[4]
                 + ', color='
                 + get_color(s_l[5])
-                + ', arrowhead=invempty'
-                + ', arrowtail=invempty'
+                + ', arrowhead=dotinv'
+                + ', arrowtail=dotinv'
                 + COMMON_EDGE_ATTRIBUTES
                 + "]\n"
             )
