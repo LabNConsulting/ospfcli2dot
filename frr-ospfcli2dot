@@ -251,16 +251,11 @@ class Router(object):
         """
         self.position = '", pos = "' + x_coord + "," + y_coord + "!"
 
-print(
-    'frr-ospfcli2dot - takes the output of "show ip ospf database router"' +
-    'and optionally a hostfile\noutputs a GraphViz DOT file ' +
-    'corresponding to the network topology\n'
-)
 #print("v0.4 alpha, By Foeh Mannay, September 2018\n")
 #print("v0.5 , By Don Fedyk November 2021\n")
 
 
-def read_source(source_file, hosts_file, destination, decimal_num, stubs):
+def read_source(source_file, hosts_file, destination, decimal_num, stubs, reduce_links):
     """
     Main Source read file for Caas
     """
@@ -269,7 +264,6 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
     transits = []
     areas = []
     ospf_areas = []
-    reduce_links = 'n'
     lookup = []
     ospf_area = None
     neighbour = None
@@ -321,7 +315,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
             # This is modifed for FRR
             # m = re.search('TOS 0 Metrics: (\d*)', line)
             # Changed to "(?s)" which should match if there is an s
-            # XXX Setting the DOTALL flag may have no effect
+            # XXX Setting the DOTALL flag "(?s)" or "re.S" may have no effect
             scan = re.search(r"TOS 0 Metric: (\d*)", line, re.S)
             if scan:
                 if neighbour is not None:
@@ -367,30 +361,31 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                             if len(splitline) == 4:
                                 rt.setposition(splitline[2], splitline[3])
 
-
-    separator = input(
+        separator = input(
         "If you want to group by hostname, enter the separator now\n (or press enter to continue): "
     )
-    if separator:
-        first_last = ""
-        while (first_last != "f") & (first_last != "l"):
-            first_last = input(
-                "Do you want to group by the [f]irst or [l]ast part of the hostname? "
-            )
-        areas = set()
-        if first_last == "f":
-            first_last = 0
+        if separator:
+            first_last = ""
+            while (first_last != "f") & (first_last != "l"):
+                first_last = input(
+                    "Do you want to group by the [f]irst or [l]ast part of the hostname? "
+                )
+            areas = set()
+            if first_last == "f":
+                first_last = 0
+            else:
+                first_last = -1
+            for rt in routers:
+                if rt.hostname != rt.routerid:
+                    areas.add(rt.hostname.split(separator)[0])
         else:
-            first_last = -1
-        for rt in routers:
-            if rt.hostname != rt.routerid:
-                areas.add(rt.hostname.split(separator)[0])
-    else:
-        areas = None
+            areas = None
 
+    """
     reduce_links = input(" Do you want to reduce_links links [y]es or [n]o? ")
     while (reduce_links != "y") and (reduce_links != "n"):
         reduce_links = input("[y]es or [n]o")
+    """
 
     with open(destination, "w") as outfile:
         outfile.write(
@@ -489,9 +484,9 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
                 links.append([name, hostname, r_l[1], r_l[2], 'back', r_l[3]])
                 # Back facing link so that the inv arrow can represent an interface
 
-        if reduce_links == 'y':
+        if reduce_links is True:
             links = reduce_links_links(merge_sort(links))
-            # Pair up symmetrically costed links (so we get an undirected edge
+            # Pair up symmetrically opposed links (so we get an undirected edge
             # rather than two directed edges) then output to the DOT file
             # Note primarily for drawing simplicity.
         else:
@@ -519,19 +514,21 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs):
         outfile.write("}\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract Topology from OSPF ")
+    parser = argparse.ArgumentParser(description='description:frr-ospfcli2dot takes the output of "show ip ospf database router"and optionally a hostfile and then outputs a GraphViz DOT file corresponding to the network topology')
     parser.add_argument("source_file", help="The file name for the input OSPF Database text file")
     parser.add_argument("destination_file", help="The file name for the output dot file")
     parser.add_argument(
         "--hosts_file", help="The file name for the input Host Names Database text file")
-    parser.add_argument("--ip_decimal", default=False, help="Print IP in decimal format")
-    parser.add_argument("--add_stubs", default=True, help="Print Stub networks in node")
-    parser.add_argument("--force_output", default=False, help="Don't check for output file")
+    parser.add_argument("--ip_decimal", action='store_true', default=False, help="Print IP in decimal format")
+    parser.add_argument("--no_stubs", action='store_true', default=False, help="Don't print Stub networks in node")
+    parser.add_argument("--force_output", action='store_true', default=False, help="Don't check for output file")
+    parser.add_argument("--expand_links", action='store_true', default=False, help="Don't merge symmetrically opposed links")
     #parser.add_argument('-v', '--verbose', default=False, help="Optional:Verbose printing")
     args = parser.parse_args()
     ip_decimal = eval(str(args.ip_decimal))
-    add_stubs = eval(str(args.add_stubs))
+    add_stubs = eval(str(not args.no_stubs))
     force_output = eval(str(args.force_output))
+    reduce_links = eval(str(not args.expand_links))
     abort = False
     # Prevent overwriting of files unless the user forces it - you can destroy data - be careful.
     if not force_output and os.path.isfile(args.destination_file):
@@ -543,4 +540,4 @@ if __name__ == "__main__":
             print("Aborting -- output file exists.")
             abort = True
     if not abort:
-        read_source(args.source_file, args.hosts_file, args.destination_file, ip_decimal, add_stubs)
+        read_source(args.source_file, args.hosts_file, args.destination_file, ip_decimal, add_stubs, reduce_links)
