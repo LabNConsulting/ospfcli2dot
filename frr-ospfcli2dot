@@ -271,7 +271,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs, reduce
     transit = None
     with open(source_file, "r") as infile:
         for line in infile:
-            scan = re.search(r"Router Link States \(Area (\d*.\d*.\d*.\d*)\)", line)
+            scan = re.search(r"Router Link States \(Area (\d*.\d*.\d*.\d*(?: \[(?:(?:NSSA)|(?:Stub))\])?)\)", line)
             if scan:
                 ospf_area = scan.group(1)
                 ospf_areas.append(ospf_area)
