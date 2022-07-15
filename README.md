@@ -3,11 +3,9 @@ Based onthe orifinal with fixes
 frr-ospfcli2dot - takes the output of "show ip ospf database router"and optionally a hostfile
 outputs a GraphViz DOT file corresponding to the network topology
 
-usage: frr-ospfcli2dot [-h] [--hosts_file HOSTS_FILE]
+usage: frr-ospfcli2dot [-h] [--hosts_file HOSTS_FILE] [--ip_decimal]
 
-                       [--ip_decimal IP_DECIMAL] [--add_stubs ADD_STUBS]
-                       
-                       [--force_output FORCE_OUTPUT]
+                       [--no_stubs] [--force_output] [--expand_links]
                        
                        source_file destination_file
 
@@ -28,18 +26,21 @@ optional arguments:
                         The file name for the input Host Names Database text
                         
                         file
-  --ip_decimal IP_DECIMAL
+  --ip_decimal
   
                         Print IP in decimal format
                         
-  --add_stubs ADD_STUBS
+  --no_stubs
   
-                        Print Stub networks in node
+                        Don't print Stub networks in node
                         
-  --force_output FORCE_OUTPUT
+  --force_output
   
                         Don't check for output file
                         
+  --expand_links
+  
+                        Don't merge symmetrically opposed links
 
 This is the original - for other OS.
 
