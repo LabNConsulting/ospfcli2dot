@@ -262,7 +262,7 @@ def read_source(source_file, hosts_file, destination, decimal_num, stubs, reduce
     routers = []
     links = []
     transits = []
-    areas = []
+    areas = None
     ospf_areas = []
     lookup = []
     ospf_area = None
